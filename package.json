@@ -1,0 +1,47 @@
+{
+  "name": "@starkbank/checkout-3ds",
+  "version": "1.0.0-alpha.0",
+  "description": "Stark Bank browser SDK for 3DS card authentication at checkout — rewrite em JS puro",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "unpkg": "./dist/checkout-3ds.min.js",
+  "jsdelivr": "./dist/checkout-3ds.min.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "keywords": [
+    "starkbank",
+    "stark",
+    "3ds",
+    "checkout",
+    "payment",
+    "card",
+    "authentication"
+  ],
+  "license": "UNLICENSED",
+  "scripts": {
+    "prebuild": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
+    "build": "node build.config.mjs",
+    "test": "vitest run",
+    "test:smoke": "vitest run --config vitest.smoke.config.js",
+    "test:watch": "vitest",
+    "generate:iso4217": "node scripts/generate-iso4217.mjs",
+    "prepublishOnly": "npm run build && npm run test && npm run test:smoke"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.4"
+  },
+  "sideEffects": false
+}
