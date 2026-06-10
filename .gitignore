@@ -6,3 +6,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Claude Code — settings pessoais (hooks ficam em .claude/hooks/ e podem ser commitados)
+.claude/settings.local.json
