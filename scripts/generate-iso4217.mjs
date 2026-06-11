@@ -30,7 +30,17 @@ function parseCsvLine(line) {
   return parts;
 }
 
-get(CSV_URL, (res) => {
+const REQUEST_TIMEOUT_MS = 30_000;
+
+const req = get(CSV_URL, (res) => {
+  if (res.statusCode !== 200) {
+    res.resume();
+    console.error(
+      `Failed to fetch ${CSV_URL}: HTTP ${res.statusCode} ${res.statusMessage ?? ""}`.trim(),
+    );
+    process.exit(1);
+  }
+
   let data = "";
   res.on("data", (chunk) => {
     data += chunk;
@@ -68,7 +78,13 @@ export const ISO4217_ALPHA_TO_NUMERIC = Object.freeze({
     out.end();
     console.log(`Wrote ${OUT_PATH} (${entries.length} currencies)`);
   });
-}).on("error", (error) => {
+});
+
+req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+  req.destroy(new Error(`Request timed out after ${REQUEST_TIMEOUT_MS}ms`));
+});
+
+req.on("error", (error) => {
   console.error(error);
   process.exit(1);
 });
