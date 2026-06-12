@@ -41,7 +41,6 @@ A v2 troca **TypeScript + 30+ arquivos espalhados** por **JavaScript puro com vo
 | Com quem falamos por fora?       | `adapters/mpi/`   |
 | Helpers puros / infra genérica?  | `utils/`          |
 | Fundação compartilhada           | `core/`           |
-| Doubles de teste                 | `testing/`        |
 
 ---
 
@@ -139,14 +138,11 @@ checkout-3ds-js/
 │   │   ├── iso4217.js             ← gerado, não editar à mão
 │   │   └── eci.js                 ← isLiabilityShiftToIssuer (puro)
 │   │
-│   ├── core/
-│   │   ├── errors.js              ← Stark3DSError + subclasses
-│   │   └── constants.js           ← MPI URLs, script element id, defaults
-│   │
-│   └── testing/
-│       └── fake-mpi-adapter.js    ← double p/ testes (não publicar)
+│   └── core/
+│       ├── errors.js              ← Stark3DSError + subclasses
+│       └── constants.js           ← MPI URLs, script element id, defaults
 │
-├── tests/                         ← espelha src/
+├── tests/                         ← espelha src/ + _helpers/ pra doubles de teste
 ├── scripts/
 │   └── generate-iso4217.mjs       ← saída: src/utils/iso4217.js
 ├── build.config.mjs               ← esbuild API (ESM + CJS + IIFE)
