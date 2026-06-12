@@ -66,7 +66,8 @@ Resumo (detalhe completo no [README.md](./README.md#estrutura)):
 | `src/adapters/mpi/`| Com quem falamos por fora?       | **Sim — único lugar com DOM MPI / Braspag** |
 | `src/utils/`       | Helpers puros / infra genérica?  | Sem DOM MPI (fila/timeout são DOM-agnostic) |
 | `src/core/`        | Fundação compartilhada           | Não |
-| `src/testing/`     | Doubles de teste                 | Não publicar |
+
+> Doubles/fakes de teste vivem em `tests/_helpers/` — não em `src/`. Pasta `src/testing/` foi removida pra reduzir surface area do bundle.
 
 ### O que NÃO fazer
 
