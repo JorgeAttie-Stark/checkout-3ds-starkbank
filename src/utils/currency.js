@@ -1,4 +1,5 @@
 import { ISO4217_ALPHA_TO_NUMERIC } from "./iso4217.js";
+import { Stark3DSValidationError } from "../core/errors.js";
 
 export function normalizeCurrencyCode(currency) {
   if (typeof currency !== "string") return null;
@@ -10,4 +11,17 @@ export function normalizeCurrencyCode(currency) {
 
 export function isSupportedCurrency(currency) {
   return normalizeCurrencyCode(currency) !== null;
+}
+
+/**
+ * @param {string} currency
+ * @returns {string}
+ * @throws {Stark3DSValidationError}
+ */
+export function toIso4217Numeric(currency) {
+  const code = normalizeCurrencyCode(currency);
+  if (!code) {
+    throw new Stark3DSValidationError(`Unsupported currency: ${currency}`);
+  }
+  return ISO4217_ALPHA_TO_NUMERIC[code];
 }
