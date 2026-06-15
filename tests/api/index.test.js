@@ -9,9 +9,11 @@ import {
   isLiabilityShiftToIssuer,
 } from "../../src/api/index.js";
 
-describe("api/index — Fase 0 façade", () => {
-  it("expõe Stark3DS.authenticate (stub que rejeita)", async () => {
-    await expect(Stark3DS.authenticate({})).rejects.toBeInstanceOf(Stark3DSError);
+describe("api/index — façade", () => {
+  it("Stark3DS.authenticate valida input antes de tudo", async () => {
+    await expect(Stark3DS.authenticate({})).rejects.toBeInstanceOf(
+      Stark3DSValidationError,
+    );
   });
 
   it("re-exporta helpers", () => {
