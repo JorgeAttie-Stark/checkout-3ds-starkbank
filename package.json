@@ -1,7 +1,7 @@
 {
   "name": "@starkbank/checkout-3ds",
   "version": "1.0.0-alpha.0",
-  "description": "Stark Bank browser SDK for 3DS card authentication at checkout — rewrite em JS puro",
+  "description": "Stark Bank browser SDK for 3DS 2.0 card authentication at checkout.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -17,6 +17,7 @@
   "files": [
     "dist",
     "CHANGELOG.md",
+    "LICENSE",
     "README.md"
   ],
   "keywords": [
@@ -28,7 +29,7 @@
     "card",
     "authentication"
   ],
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "prebuild": "node --input-type=module -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true })\"",
     "build": "node build.config.mjs",

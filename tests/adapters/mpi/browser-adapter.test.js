@@ -78,6 +78,11 @@ function adapterOpts(overrides = {}) {
   return { environment: "sandbox", ...overrides };
 }
 
+/** Opt-out do isolamento padrão — testes que mockam `window.bpmpi_*` no host. */
+function hostAdapterOpts(overrides = {}) {
+  return adapterOpts({ isolateRuntime: false, ...overrides });
+}
+
 beforeEach(() => {
   scriptLoader.resetScriptLoaderForTests();
   document.body.innerHTML = "";
@@ -157,7 +162,7 @@ describe("adapters/mpi/browser-adapter — cleanup", () => {
         }),
     );
 
-    const adapter = new BrowserMpiAdapter(adapterOpts());
+    const adapter = new BrowserMpiAdapter(hostAdapterOpts());
     const promise = adapter.authenticate(baseInput());
 
     // dispara onSuccess manualmente — finish/cleanup roda
@@ -193,10 +198,9 @@ describe("adapters/mpi/browser-adapter — TIMEOUT interno", () => {
       queueMicrotask(() => window.bpmpi_config?.().onReady?.());
     });
 
-    const adapter = new BrowserMpiAdapter({
-      environment: "sandbox",
-      authenticateTimeoutMs: 100,
-    });
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ authenticateTimeoutMs: 100 }),
+    );
 
     const promise = adapter.authenticate(baseInput());
     const assertion = expect(promise).rejects.toBeInstanceOf(
@@ -231,10 +235,9 @@ describe("adapters/mpi/browser-adapter — TIMEOUT interno", () => {
       queueMicrotask(() => window.bpmpi_config?.().onReady?.());
     });
 
-    const adapter = new BrowserMpiAdapter({
-      environment: "sandbox",
-      authenticateTimeoutMs: 50,
-    });
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ authenticateTimeoutMs: 50 }),
+    );
     const promise = adapter.authenticate(baseInput());
     const assertion = expect(promise).rejects.toBeInstanceOf(
       Stark3DSAuthenticateTimeoutError,
@@ -254,10 +257,9 @@ describe("adapters/mpi/browser-adapter — TIMEOUT interno", () => {
     vi.useFakeTimers();
     installScriptLoaderStub("success");
 
-    const adapter = new BrowserMpiAdapter({
-      environment: "sandbox",
-      authenticateTimeoutMs: 5000,
-    });
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ authenticateTimeoutMs: 5000 }),
+    );
     const promise = adapter.authenticate(baseInput());
 
     // deixa o microtask do onReady rodar e callback disparar
@@ -279,10 +281,9 @@ describe("adapters/mpi/browser-adapter — TIMEOUT interno", () => {
     vi.useFakeTimers();
     installScriptLoaderStub("success");
 
-    const adapter = new BrowserMpiAdapter({
-      environment: "sandbox",
-      authenticateTimeoutMs: 0,
-    });
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ authenticateTimeoutMs: 0 }),
+    );
     const promise = adapter.authenticate(baseInput());
     await vi.advanceTimersByTimeAsync(0);
     const result = await promise;
@@ -321,7 +322,7 @@ describe("adapters/mpi/browser-adapter — error paths síncronos", () => {
       });
     });
 
-    const adapter = new BrowserMpiAdapter(adapterOpts());
+    const adapter = new BrowserMpiAdapter(hostAdapterOpts());
     await expect(adapter.authenticate(baseInput())).rejects.toThrow(
       /braspag broke/,
     );
@@ -382,7 +383,9 @@ describe("adapters/mpi/browser-adapter — configuração", () => {
       handlers?.onDisabled?.();
     });
 
-    const adapter = new BrowserMpiAdapter(adapterOpts({ environment: "sandbox" }));
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ environment: "sandbox" }),
+    );
     await adapter.authenticate(baseInput());
 
     expect(captured.Environment).toBe("SDB");
@@ -395,7 +398,9 @@ describe("adapters/mpi/browser-adapter — configuração", () => {
       captured?.onDisabled?.();
     });
 
-    const adapter = new BrowserMpiAdapter(adapterOpts({ environment: "production" }));
+    const adapter = new BrowserMpiAdapter(
+      hostAdapterOpts({ environment: "production" }),
+    );
     await adapter.authenticate(baseInput());
 
     expect(captured.Environment).toBe("PRD");
@@ -410,7 +415,7 @@ describe("adapters/mpi/browser-adapter — configuração", () => {
       });
 
     const adapter = new BrowserMpiAdapter(
-      adapterOpts({
+      hostAdapterOpts({
         scriptLoadAttempts: 5,
         scriptRetryDelayMs: 200,
         threeDsScriptUrl: "https://custom.example/mpi.js",
@@ -440,7 +445,7 @@ describe("adapters/mpi/browser-adapter — DOM container", () => {
       handlers?.onDisabled?.();
     });
 
-    const adapter = new BrowserMpiAdapter(adapterOpts());
+    const adapter = new BrowserMpiAdapter(hostAdapterOpts());
     await adapter.authenticate(baseInput());
 
     expect(containerAtLoadTime).toBeTruthy();
@@ -573,13 +578,39 @@ describe("adapters/mpi/browser-adapter — isolateRuntime (Fase 4)", () => {
     expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
   });
 
-  it("isolateRuntime: false (default) usa document host", async () => {
+  it("isolateRuntime omitido (default) usa iframe isolado", async () => {
     installScriptLoaderStub("success");
-    const adapter = new BrowserMpiAdapter(adapterOpts()); // sem isolateRuntime
+    const createSpy = vi.spyOn(isolatedRuntime, "createIsolatedRuntime");
+    const adapter = new BrowserMpiAdapter(adapterOpts());
 
     await adapter.authenticate(baseInput());
 
-    // iframe nunca foi criado
+    expect(createSpy).toHaveBeenCalled();
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+    expect(window.bpmpi_config).toBeUndefined();
+  });
+
+  it("isolateRuntime: false usa document host", async () => {
+    installScriptLoaderStub("success");
+    const createSpy = vi.spyOn(isolatedRuntime, "createIsolatedRuntime");
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: false }));
+
+    await adapter.authenticate(baseInput());
+
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+  });
+
+  it("default (sem flag) é isolado: createIsolatedRuntime é chamado", async () => {
+    const createSpy = vi.spyOn(isolatedRuntime, "createIsolatedRuntime");
+    installScriptLoaderStub("success");
+
+    const adapter = new BrowserMpiAdapter({ environment: "sandbox" });
+    const result = await adapter.authenticate(baseInput());
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("authenticated");
+    // após cleanup, iframe destruído
     expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
   });
 
