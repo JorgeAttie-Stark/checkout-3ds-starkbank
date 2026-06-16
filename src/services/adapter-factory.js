@@ -1,11 +1,6 @@
-import { Stark3DSError } from "../core/errors.js";
+import { BrowserMpiAdapter } from "../adapters/mpi/browser-adapter.js";
 
-const defaultFactory = () => {
-  throw new Stark3DSError(
-    "MPI adapter not available yet — Fase 3",
-    "ADAPTER_NOT_CONFIGURED",
-  );
-};
+const defaultFactory = (config) => new BrowserMpiAdapter(config);
 
 let adapterFactory = defaultFactory;
 
