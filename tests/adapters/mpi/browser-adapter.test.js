@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserMpiAdapter } from "../../../src/adapters/mpi/browser-adapter.js";
 import * as scriptLoader from "../../../src/adapters/mpi/script-loader.js";
+import * as isolatedRuntime from "../../../src/adapters/mpi/isolated-runtime.js";
+import { ISOLATION_FRAME_ID } from "../../../src/adapters/mpi/isolated-runtime.js";
 import { MPI_SCRIPT_ELEMENT_ID } from "../../../src/core/constants.js";
 import { Stark3DSAuthenticateTimeoutError } from "../../../src/core/errors.js";
 
@@ -21,52 +23,55 @@ const baseInput = () => ({
 });
 
 function installScriptLoaderStub(outcome) {
-  vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(async () => {
-    const el = document.createElement("script");
-    el.id = MPI_SCRIPT_ELEMENT_ID;
-    document.body.appendChild(el);
+  vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(
+    async (_env, options = {}) => {
+      const target = options.target ?? { document, window };
+      const el = target.document.createElement("script");
+      el.id = MPI_SCRIPT_ELEMENT_ID;
+      target.document.body.appendChild(el);
 
-    window.bpmpi_authenticate = () => {
-      const handlers = window.bpmpi_config?.();
-      if (!handlers) return;
-      switch (outcome) {
-        case "success":
-          handlers.onSuccess?.({
-            Cavv: "fake-cavv",
-            Eci: "05",
-            Xid: null,
-            Version: "2.2.0",
-            ReferenceId: "ref-1",
-          });
-          break;
-        case "failure":
-          handlers.onFailure?.({
-            Eci: "07",
-            ReturnCode: "X",
-            ReturnMessage: "fail",
-            ReferenceId: "ref-1",
-          });
-          break;
-        case "unenrolled":
-          handlers.onUnenrolled?.({ Eci: "00" });
-          break;
-        case "disabled":
-          handlers.onDisabled?.();
-          break;
-        case "error":
-          handlers.onError?.({ ReturnCode: "99" });
-          break;
-        case "unsupported_brand":
-          handlers.onUnsupportedBrand?.({});
-          break;
-      }
-    };
+      target.window.bpmpi_authenticate = () => {
+        const handlers = target.window.bpmpi_config?.();
+        if (!handlers) return;
+        switch (outcome) {
+          case "success":
+            handlers.onSuccess?.({
+              Cavv: "fake-cavv",
+              Eci: "05",
+              Xid: null,
+              Version: "2.2.0",
+              ReferenceId: "ref-1",
+            });
+            break;
+          case "failure":
+            handlers.onFailure?.({
+              Eci: "07",
+              ReturnCode: "X",
+              ReturnMessage: "fail",
+              ReferenceId: "ref-1",
+            });
+            break;
+          case "unenrolled":
+            handlers.onUnenrolled?.({ Eci: "00" });
+            break;
+          case "disabled":
+            handlers.onDisabled?.();
+            break;
+          case "error":
+            handlers.onError?.({ ReturnCode: "99" });
+            break;
+          case "unsupported_brand":
+            handlers.onUnsupportedBrand?.({});
+            break;
+        }
+      };
 
-    queueMicrotask(() => {
-      const handlers = window.bpmpi_config?.();
-      handlers?.onReady?.();
-    });
-  });
+      queueMicrotask(() => {
+        const handlers = target.window.bpmpi_config?.();
+        handlers?.onReady?.();
+      });
+    },
+  );
 }
 
 function adapterOpts(overrides = {}) {
@@ -83,6 +88,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   scriptLoader.resetScriptLoaderForTests();
+  document.getElementById(ISOLATION_FRAME_ID)?.remove();
   document.body.innerHTML = "";
   delete window.bpmpi_authenticate;
   delete window.bpmpi_config;
@@ -412,11 +418,14 @@ describe("adapters/mpi/browser-adapter — configuração", () => {
     );
     await adapter.authenticate(baseInput());
 
-    expect(loadSpy).toHaveBeenCalledWith("sandbox", {
-      attempts: 5,
-      retryDelayMs: 200,
-      scriptUrl: "https://custom.example/mpi.js",
-    });
+    expect(loadSpy).toHaveBeenCalledWith(
+      "sandbox",
+      expect.objectContaining({
+        attempts: 5,
+        retryDelayMs: 200,
+        scriptUrl: "https://custom.example/mpi.js",
+      }),
+    );
   });
 });
 
@@ -437,5 +446,186 @@ describe("adapters/mpi/browser-adapter — DOM container", () => {
     expect(containerAtLoadTime).toBeTruthy();
     // após cleanup, o container some
     expect(document.querySelector('[data-stark-3ds="payment-fields"]')).toBeNull();
+  });
+});
+
+describe("adapters/mpi/browser-adapter — isolateRuntime (Fase 4)", () => {
+  it("isolateRuntime: true cria iframe e mantém DOM host limpo durante authenticate", async () => {
+    let hostDirtyDuringLoad = false;
+    let iframeDuringLoad = null;
+    vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(
+      async (_env, options = {}) => {
+        const target = options.target;
+        // host body não recebeu container nem <script>
+        hostDirtyDuringLoad =
+          !!document.querySelector('[data-stark-3ds="payment-fields"]') ||
+          !!document.getElementById(MPI_SCRIPT_ELEMENT_ID);
+        iframeDuringLoad = document.getElementById(ISOLATION_FRAME_ID);
+        // resolve via callback do isolated
+        target.window.bpmpi_authenticate = () => {
+          target.window.bpmpi_config?.().onDisabled?.();
+        };
+        queueMicrotask(() => target.window.bpmpi_config?.().onReady?.());
+      },
+    );
+
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+    const result = await adapter.authenticate(baseInput());
+
+    expect(result.status).toBe("disabled");
+    expect(hostDirtyDuringLoad).toBe(false);
+    expect(iframeDuringLoad).toBeTruthy();
+    // após cleanup, iframe foi destruído
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+    // host nunca recebeu globais
+    expect(window.bpmpi_authenticate).toBeUndefined();
+    expect(window.bpmpi_config).toBeUndefined();
+  });
+
+  it("isolation: container é anexado no iframe.document, não no host", async () => {
+    let containerLocation;
+    vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(
+      async (_env, options = {}) => {
+        const inIframe = options.target.document.querySelector(
+          '[data-stark-3ds="payment-fields"]',
+        );
+        const inHost = document.querySelector(
+          '[data-stark-3ds="payment-fields"]',
+        );
+        containerLocation = { inIframe: !!inIframe, inHost: !!inHost };
+        options.target.window.bpmpi_authenticate = () =>
+          options.target.window.bpmpi_config?.().onDisabled?.();
+        queueMicrotask(() => options.target.window.bpmpi_config?.().onReady?.());
+      },
+    );
+
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+    await adapter.authenticate(baseInput());
+
+    expect(containerLocation).toEqual({ inIframe: true, inHost: false });
+  });
+
+  it("isolation: onSuccess via target.window devolve mapSuccess corretamente", async () => {
+    vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(
+      async (_env, options = {}) => {
+        options.target.window.bpmpi_authenticate = () =>
+          options.target.window.bpmpi_config?.().onSuccess?.({
+            Cavv: "iframe-cavv",
+            Eci: "05",
+            Xid: "iframe-xid",
+            Version: "2.2.0",
+            ReferenceId: "iframe-ref",
+          });
+        queueMicrotask(() => options.target.window.bpmpi_config?.().onReady?.());
+      },
+    );
+
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+    const result = await adapter.authenticate(baseInput());
+
+    expect(result.status).toBe("authenticated");
+    expect(result.cavv).toBe("iframe-cavv");
+    expect(result.xid).toBe("iframe-xid");
+    expect(result.referenceId).toBe("iframe-ref");
+  });
+
+  it("isolateRuntime: true — script-loader recebe target do iframe", async () => {
+    const loadSpy = vi
+      .spyOn(scriptLoader, "loadThreeDsScript")
+      .mockImplementation(async (_env, options = {}) => {
+        options.target.window.bpmpi_authenticate = () => {
+          options.target.window.bpmpi_config?.().onDisabled?.();
+        };
+        queueMicrotask(() => options.target.window.bpmpi_config?.().onReady?.());
+      });
+
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+    await adapter.authenticate(baseInput());
+
+    expect(loadSpy).toHaveBeenCalledWith(
+      "sandbox",
+      expect.objectContaining({
+        target: expect.objectContaining({
+          document: expect.any(Object),
+          window: expect.any(Object),
+        }),
+      }),
+    );
+    const passedTarget = loadSpy.mock.calls[0][1].target;
+    expect(passedTarget.document).not.toBe(document);
+    expect(passedTarget.window).not.toBe(window);
+  });
+
+  it("🚨 CANARY com isolation: 2 authenticate() sequenciais ambos completam", async () => {
+    installScriptLoaderStub("success");
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+
+    const first = await adapter.authenticate(baseInput());
+    expect(first.status).toBe("authenticated");
+
+    // entre chamadas: iframe foi destruído, host segue limpo
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+    expect(window.bpmpi_authenticate).toBeUndefined();
+    expect(window.bpmpi_config).toBeUndefined();
+
+    const second = await adapter.authenticate(baseInput());
+    expect(second.status).toBe("authenticated");
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+  });
+
+  it("isolateRuntime: false (default) usa document host", async () => {
+    installScriptLoaderStub("success");
+    const adapter = new BrowserMpiAdapter(adapterOpts()); // sem isolateRuntime
+
+    await adapter.authenticate(baseInput());
+
+    // iframe nunca foi criado
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+  });
+
+  it("erro em createIsolatedRuntime: rejeita E cleanup roda (sem iframe órfão)", async () => {
+    vi.spyOn(isolatedRuntime, "createIsolatedRuntime").mockImplementation(() => {
+      throw new Error("isolation init failed");
+    });
+    const loadSpy = vi.spyOn(scriptLoader, "loadThreeDsScript");
+
+    const adapter = new BrowserMpiAdapter(adapterOpts({ isolateRuntime: true }));
+    await expect(adapter.authenticate(baseInput())).rejects.toThrow(
+      /isolation init failed/,
+    );
+
+    // loadThreeDsScript não foi chamado (falhou antes)
+    expect(loadSpy).not.toHaveBeenCalled();
+    // host limpo, sem iframe órfão
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+    expect(window.bpmpi_config).toBeUndefined();
+    expect(window.bpmpi_authenticate).toBeUndefined();
+  });
+
+  it("timeout com isolation: rejeita, cleanup destrói iframe", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(scriptLoader, "loadThreeDsScript").mockImplementation(
+      async (_env, options = {}) => {
+        options.target.window.bpmpi_authenticate = () => {
+          /* Braspag mudo */
+        };
+        queueMicrotask(() => options.target.window.bpmpi_config?.().onReady?.());
+      },
+    );
+
+    const adapter = new BrowserMpiAdapter({
+      environment: "sandbox",
+      isolateRuntime: true,
+      authenticateTimeoutMs: 100,
+    });
+    const promise = adapter.authenticate(baseInput());
+    const assertion = expect(promise).rejects.toBeInstanceOf(
+      Stark3DSAuthenticateTimeoutError,
+    );
+    await vi.advanceTimersByTimeAsync(150);
+    await assertion;
+
+    expect(document.getElementById(ISOLATION_FRAME_ID)).toBeNull();
+    vi.useRealTimers();
   });
 });

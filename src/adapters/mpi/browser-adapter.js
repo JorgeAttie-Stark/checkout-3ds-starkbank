@@ -4,6 +4,7 @@ import {
   loadThreeDsScript,
 } from "./script-loader.js";
 import { mapDisabled, mapFailure, mapSuccess } from "./result-mapper.js";
+import { createIsolatedRuntime } from "./isolated-runtime.js";
 import { Stark3DSAuthenticateTimeoutError } from "../../core/errors.js";
 import { DEFAULT_AUTHENTICATE_TIMEOUT_MS } from "../../core/constants.js";
 
@@ -32,11 +33,14 @@ export class BrowserMpiAdapter {
       scriptLoadAttempts,
       scriptRetryDelayMs,
       threeDsScriptUrl,
+      isolateRuntime,
     } = this.options;
 
     const timeoutMs = authenticateTimeoutMs ?? DEFAULT_AUTHENTICATE_TIMEOUT_MS;
+    const useIsolation = isolateRuntime === true;
 
     let container = null;
+    let runtime = null;
     let settled = false;
     let timeoutTimer = null;
 
@@ -48,7 +52,11 @@ export class BrowserMpiAdapter {
         timeoutTimer = null;
       }
       removeMpiContainer(container);
-      clearScriptLoadState();
+      clearScriptLoadState(
+        runtime ? { document: runtime.document, window: runtime.window } : undefined,
+      );
+      runtime?.destroy();
+      runtime = null;
     };
 
     return new Promise((resolve, reject) => {
@@ -62,12 +70,26 @@ export class BrowserMpiAdapter {
         reject(err instanceof Error ? err : new Error(String(err)));
       };
 
+      let doc = document;
+      let win = window;
+
+      try {
+        if (useIsolation) {
+          runtime = createIsolatedRuntime();
+          doc = runtime.document;
+          win = runtime.window;
+        }
+      } catch (err) {
+        fail(err);
+        return;
+      }
+
       const handlers = {
         Environment: toProviderEnvironment(environment),
         Debug: debug ?? false,
         onReady: () => {
           try {
-            window.bpmpi_authenticate?.();
+            win.bpmpi_authenticate?.();
           } catch (err) {
             fail(err);
           }
@@ -81,9 +103,9 @@ export class BrowserMpiAdapter {
       };
 
       try {
-        container = buildMpiContainer(input, document);
-        document.body.appendChild(container);
-        window.bpmpi_config = () => handlers;
+        container = buildMpiContainer(input, doc);
+        doc.body.appendChild(container);
+        win.bpmpi_config = () => handlers;
       } catch (err) {
         fail(err);
         return;
@@ -103,6 +125,7 @@ export class BrowserMpiAdapter {
         attempts: scriptLoadAttempts,
         retryDelayMs: scriptRetryDelayMs,
         scriptUrl: threeDsScriptUrl,
+        target: useIsolation ? { document: doc, window: win } : undefined,
       }).catch(fail);
     });
   }
