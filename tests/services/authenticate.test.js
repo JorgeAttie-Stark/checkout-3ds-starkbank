@@ -6,6 +6,8 @@ import {
 } from "../../src/services/adapter-factory.js";
 import { __resetConfigForTests, __configure } from "../../src/services/config-store.js";
 import { resetAuthenticateQueueForTests } from "../../src/utils/auth-queue.js";
+import * as scriptLoader from "../../src/adapters/mpi/script-loader.js";
+import { MPI_SCRIPT_ELEMENT_ID } from "../../src/core/constants.js";
 import { createFakeMpiAdapter } from "../_helpers/fake-mpi-adapter.js";
 import {
   Stark3DSError,
@@ -153,5 +155,30 @@ describe("services/authenticate", () => {
     await authenticate({ ...validInput(), environment: "production" });
 
     expect(received.environment).toBe("production");
+  });
+
+  it("sem __setAdapterFactory: cadeia E2E usa BrowserMpiAdapter (factory default)", async () => {
+    const loadSpy = vi
+      .spyOn(scriptLoader, "loadThreeDsScript")
+      .mockImplementation(async () => {
+        window.bpmpi_authenticate = () => {};
+        queueMicrotask(() => window.bpmpi_config?.().onDisabled?.());
+      });
+
+    try {
+      const output = await authenticate(validInput());
+
+      expect(loadSpy).toHaveBeenCalled();
+      expect(output.authentication.status).toBe("disabled");
+      expect(document.getElementById(MPI_SCRIPT_ELEMENT_ID)).toBeNull();
+      expect(window.bpmpi_authenticate).toBeUndefined();
+      expect(window.bpmpi_config).toBeUndefined();
+    } finally {
+      vi.restoreAllMocks();
+      scriptLoader.resetScriptLoaderForTests();
+      document.body.innerHTML = "";
+      delete window.bpmpi_authenticate;
+      delete window.bpmpi_config;
+    }
   });
 });

@@ -4,21 +4,24 @@ import {
   __setAdapterFactory,
   __resetAdapterFactory,
 } from "../../src/services/adapter-factory.js";
-import { Stark3DSError } from "../../src/core/errors.js";
+import { BrowserMpiAdapter } from "../../src/adapters/mpi/browser-adapter.js";
 
 describe("services/adapter-factory", () => {
   afterEach(() => __resetAdapterFactory());
 
-  it("factory default lança ADAPTER_NOT_CONFIGURED (Fase 2)", () => {
-    const factory = getAdapterFactory();
-    let caught;
-    try {
-      factory({});
-    } catch (err) {
-      caught = err;
-    }
-    expect(caught).toBeInstanceOf(Stark3DSError);
-    expect(caught.code).toBe("ADAPTER_NOT_CONFIGURED");
+  it("factory default instancia BrowserMpiAdapter", () => {
+    const adapter = getAdapterFactory()({ environment: "sandbox" });
+    expect(adapter).toBeInstanceOf(BrowserMpiAdapter);
+    expect(typeof adapter.authenticate).toBe("function");
+  });
+
+  it("factory default repassa config pro adapter", () => {
+    const config = {
+      environment: "production",
+      authenticateTimeoutMs: 60000,
+    };
+    const adapter = getAdapterFactory()(config);
+    expect(adapter.options).toEqual(config);
   });
 
   it("__setAdapterFactory substitui a factory ativa", () => {
@@ -28,10 +31,11 @@ describe("services/adapter-factory", () => {
     expect(getAdapterFactory()({})).toBe(fake);
   });
 
-  it("__resetAdapterFactory volta à default", () => {
+  it("__resetAdapterFactory volta à default (BrowserMpiAdapter)", () => {
     __setAdapterFactory(() => ({ authenticate: async () => ({}) }));
     __resetAdapterFactory();
 
-    expect(() => getAdapterFactory()({})).toThrow(Stark3DSError);
+    const adapter = getAdapterFactory()({ environment: "sandbox" });
+    expect(adapter).toBeInstanceOf(BrowserMpiAdapter);
   });
 });
