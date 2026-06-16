@@ -160,9 +160,10 @@ describe("services/authenticate", () => {
   it("sem __setAdapterFactory: cadeia E2E usa BrowserMpiAdapter (factory default)", async () => {
     const loadSpy = vi
       .spyOn(scriptLoader, "loadThreeDsScript")
-      .mockImplementation(async () => {
-        window.bpmpi_authenticate = () => {};
-        queueMicrotask(() => window.bpmpi_config?.().onDisabled?.());
+      .mockImplementation(async (_env, options = {}) => {
+        const target = options.target ?? { document, window };
+        target.window.bpmpi_authenticate = () => {};
+        queueMicrotask(() => target.window.bpmpi_config?.().onDisabled?.());
       });
 
     try {

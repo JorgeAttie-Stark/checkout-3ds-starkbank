@@ -112,17 +112,18 @@ Tipos comuns: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `build`.
 Exemplos bons:
 
 ```
-feat: portar validation/input.js do as-is
-fix: limpar script MPI também em path de timeout
-refactor: extrair MPI URLs para core/constants
+feat: validar currency no input
+fix: limpar script 3DS também em path de timeout
+refactor: extrair URLs do gateway para core/constants
 ```
 
 ---
 
 ## Regras de PR
 
-- **1 fase do plano de rewrite OU 1 subpasta `adapters/mpi/*` por PR.**
-- Nunca refatorar `services/authenticate.js` + `adapters/mpi/*` na mesma PR.
+- **PR tem escopo único e revisável** — uma feature, um fix, ou uma camada por vez.
+- **1 subpasta `adapters/mpi/*` por PR** quando o trabalho mexer nessa camada.
+- Nunca misturar `services/authenticate.js` + `adapters/mpi/*` na mesma PR.
 - PRs que tocam `adapters/mpi/*`: checklist canary cleanup explícito (ver [CLAUDE.md](./CLAUDE.md#prs-que-tocam-srcadaptersmpi)).
 - Build + testes verdes antes de marcar "ready for review":
 

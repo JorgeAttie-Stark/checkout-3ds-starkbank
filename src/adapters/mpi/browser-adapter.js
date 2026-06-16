@@ -37,7 +37,7 @@ export class BrowserMpiAdapter {
     } = this.options;
 
     const timeoutMs = authenticateTimeoutMs ?? DEFAULT_AUTHENTICATE_TIMEOUT_MS;
-    const useIsolation = isolateRuntime === true;
+    const useIsolation = isolateRuntime !== false;
 
     let container = null;
     let runtime = null;
